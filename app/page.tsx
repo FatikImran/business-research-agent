@@ -26,6 +26,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const starterPrompts = [
+    'Give me a market overview of Apple.',
+    'Analyze Tesla’s competitive position.',
+    'Research Google’s AI strategy and recent moves.',
+    'What are the latest growth signals for NVIDIA?'
+  ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,6 +101,11 @@ export default function Home() {
     setError('');
   };
 
+  const usePrompt = (prompt: string) => {
+    if (loading) return;
+    setInput(prompt);
+  };
+
   const downloadChat = () => {
     if (messages.length === 0) return;
     
@@ -113,29 +124,88 @@ export default function Home() {
 
   return (
     <main className={styles.container}>
+      <div className={styles.backgroundGlow} aria-hidden="true" />
+      <div className={styles.backgroundGrid} aria-hidden="true" />
+
       <div className={styles.header}>
-        <h1>🔍 Business Research Assistant</h1>
-        <p>Multi-Agent AI System • Powered by LangGraph • Deployed on Vercel</p>
+        <div className={styles.headerTopRow}>
+          <div className={styles.kicker}>Caramel Intelligence Suite</div>
+          <div className={styles.livePill}>Live web research</div>
+        </div>
+        <h1>Business Research Assistant</h1>
+        <p>
+          A modern multi-agent workspace for fast company research, market context,
+          and decision-ready insights.
+        </p>
+
+        <div className={styles.heroStats}>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Stack</span>
+            <strong>LangGraph + Gemini</strong>
+          </div>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Search</span>
+            <strong>DuckDuckGo intelligence</strong>
+          </div>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Output</span>
+            <strong>Concise, sourced answers</strong>
+          </div>
+        </div>
       </div>
 
       <div className={styles.chatContainer}>
+        <div className={styles.toolbar}>
+          <div>
+            <span className={styles.toolbarLabel}>Quick prompts</span>
+            <p>Tap a prompt or type your own question.</p>
+          </div>
+          <div className={styles.toolbarActions}>
+            <button type="button" className={styles.ghostBtn} onClick={downloadChat} disabled={messages.length === 0}>
+              Download chat
+            </button>
+            <button type="button" className={styles.ghostBtn} onClick={clearChat} disabled={messages.length === 0}>
+              Clear all
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.promptRow}>
+          {starterPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              className={styles.promptChip}
+              onClick={() => usePrompt(prompt)}
+              disabled={loading}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+
         <div className={styles.messagesBox}>
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
-              <p className={styles.emptyIcon}>👋</p>
-              <h2>Welcome!</h2>
-              <p>Ask questions about any company and our AI research team will investigate.</p>
-              <div className={styles.examples}>
-                <p className={styles.label}>Try asking:</p>
+              <div className={styles.emptyBadge}>Ready when you are</div>
+              <h2>Start a research brief</h2>
+              <p>
+                Ask about any company, competitor, trend, or strategic move and the
+                assistant will gather and synthesize the most relevant context.
+              </p>
+              <div className={styles.emptyPanel}>
+                <p className={styles.label}>Good first questions</p>
                 <ul>
-                  <li>"Tell me about Apple Inc"</li>
-                  <li>"What about their market position?"</li>
-                  <li>"Research Google's AI initiatives"</li>
+                  <li>Company overview and current strategy</li>
+                  <li>Competitive positioning and risks</li>
+                  <li>Recent AI, product, or expansion moves</li>
                 </ul>
               </div>
-              <p className={styles.features}>
-                💡 Features: Real web search • Multi-agent analysis • Confidence scoring
-              </p>
+              <div className={styles.featureRow}>
+                <span>Real web search</span>
+                <span>Multi-agent analysis</span>
+                <span>Confidence scoring</span>
+              </div>
             </div>
           ) : (
             messages.map((msg, idx) => (
@@ -157,7 +227,7 @@ export default function Home() {
           )}
           {loading && (
             <div className={styles.loading}>
-              <span>⏳ Researching</span>
+              <span>Researching</span>
               <span className={styles.dots}>
                 <span>.</span><span>.</span><span>.</span>
               </span>
@@ -167,42 +237,29 @@ export default function Home() {
         </div>
 
         <form onSubmit={handleSubmit} className={styles.inputBox}>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about any company..."
-            disabled={loading}
-            maxLength={1000}
-            className={styles.input}
-            autoFocus
-          />
-          <button 
-            type="submit" 
-            disabled={loading || !input.trim()}
-            className={styles.sendBtn}
-            title="Send query"
-          >
-            {loading ? '⏳' : '📤'}
-          </button>
-          <button 
-            type="button"
-            onClick={downloadChat}
-            disabled={messages.length === 0}
-            className={styles.downloadBtn}
-            title="Download conversation"
-          >
-            💾
-          </button>
-          <button 
-            type="button"
-            onClick={clearChat}
-            disabled={messages.length === 0}
-            className={styles.clearBtn}
-            title="Clear chat"
-          >
-            🗑️
-          </button>
+          <div className={styles.inputShell}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask about any company..."
+              disabled={loading}
+              maxLength={1000}
+              className={styles.input}
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className={styles.sendBtn}
+              title="Send query"
+            >
+              {loading ? 'Working…' : 'Research'}
+            </button>
+          </div>
+          <p className={styles.inputHint}>
+            Ask for a summary, competitive analysis, recent news, or a strategy brief.
+          </p>
         </form>
       </div>
 
