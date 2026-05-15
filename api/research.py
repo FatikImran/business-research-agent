@@ -221,6 +221,15 @@ def research():
 
     except Exception as e:
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
+        # Ensure we return a valid JSON response even on unexpected errors
+        resp_body = {
+            'success': False,
+            'error': 'Unhandled server error while processing the request.',
+            'detail': str(e),
+            'timestamp': datetime.now().isoformat(),
+            'execution_time_ms': execution_time,
+        }
+        response = jsonify(resp_body)
         response._debug_headers = debug_headers('error', status='unhandled-exception', preview=str(e))
         return response, 500
 
