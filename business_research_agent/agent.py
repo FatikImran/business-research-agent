@@ -157,6 +157,12 @@ def get_gemini_model():
     Initialize Google Gemini model with safe API key handling.
     API key should be in GOOGLE_API_KEY environment variable.
     """
+    # Force reload of environment variables right before getting model
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+    
     if not GENAI_AVAILABLE:
         logger.warning("google-generativeai not installed")
         print("DEBUG: google-generativeai not installed")
@@ -178,9 +184,11 @@ def get_gemini_model():
     try:
         genai.configure(api_key=api_key)
         # Reverted to gemini-2.5-flash as per user request
+        # model = genai.GenerativeModel('gemini-2.5-flash')
+        # Actually checking available models or just using the string
         model = genai.GenerativeModel('gemini-2.5-flash')
-        # Test model availability with a lightweight request
-        # model.get_model() # This verifies the model exists in the project
+        # Force a test call to prove it works right now
+        # response = model.generate_content("ping") 
         logger.info("✓ Google Gemini API initialized successfully")
         print("DEBUG: Model successfully created")
         return model
