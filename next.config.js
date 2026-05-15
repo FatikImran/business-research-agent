@@ -4,18 +4,6 @@ const nextConfig = {
   swcMinify: true,
   compress: true,
   poweredByHeader: false,
-  
-  // API rewrites for Python serverless functions
-  async rewrites() {
-    return {
-      beforeFiles: [
-        {
-          source: '/api/:path*',
-          destination: '/api/:path*',
-        },
-      ],
-    };
-  },
 
   // Security headers
   async headers() {

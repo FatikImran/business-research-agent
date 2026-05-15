@@ -18,10 +18,5 @@ python-dotenv==1.2.2
 requests==2.34.2
 pydantic==2.13.4
 
-# For Vercel Deployment
-flask==3.0.0
-flask-cors==4.0.0
-gunicorn==21.2.0
-
 # Type hints
 typing-extensions==4.15.0
