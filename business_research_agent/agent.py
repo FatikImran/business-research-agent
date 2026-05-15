@@ -27,22 +27,9 @@ from enum import Enum
 
 from dotenv import load_dotenv
 
-try:
-    import google.generativeai as genai
-    from google.generativeai.types import HarmCategory, HarmBlockThreshold
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
+from ddgs import DDGS
 
-try:
-    from ddgs import DDGS
-    DDGS_AVAILABLE = True
-except ImportError:
-    try:
-        from duckduckgo_search import DDGS
-        DDGS_AVAILABLE = True
-    except ImportError:
-        DDGS_AVAILABLE = False
+DDGS_AVAILABLE = True
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END, START
@@ -62,6 +49,49 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+class _GeminiResponseAdapter:
+    """Normalize Gemini response objects across SDK variants."""
+
+    def __init__(self, response: Any):
+        self._response = response
+
+    @property
+    def text(self) -> str:
+        text = getattr(self._response, "text", None)
+        if text:
+            return text
+
+        candidates = getattr(self._response, "candidates", None) or []
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) or []
+            for part in parts:
+                part_text = getattr(part, "text", None)
+                if part_text:
+                    return part_text
+        return ""
+
+
+class _GeminiModelAdapter:
+    """Small compatibility wrapper that exposes generate_content()."""
+
+    def __init__(self, backend: Any, model_name: str, mode: str):
+        self._backend = backend
+        self.model_name = model_name
+        self.mode = mode
+
+    def generate_content(self, prompt: str, **kwargs: Any) -> _GeminiResponseAdapter:
+        if self.mode == "new":
+            response = self._backend.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                **kwargs,
+            )
+        else:
+            response = self._backend.generate_content(prompt, **kwargs)
+        return _GeminiResponseAdapter(response)
 
 
 class ClarityStatus(str, Enum):
@@ -155,42 +185,42 @@ class AgentState(BaseModel):
 def get_gemini_model():
     """
     Initialize Google Gemini model with safe API key handling.
-    API key should be in GOOGLE_API_KEY environment variable.
+    API key should be in GOOGLE_API_KEY or GEMINI_API_KEY.
     """
-    # Force reload of environment variables right before getting model
     import os
     from dotenv import load_dotenv
+
     load_dotenv()
     load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-    
-    if not GENAI_AVAILABLE:
-        logger.warning("google-generativeai not installed")
-        print("DEBUG: google-generativeai not installed")
-        return None
-    
-    api_key = os.getenv("GOOGLE_API_KEY")
+    load_dotenv(os.path.join(os.getcwd(), '.env'))
+
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY")
-    
-    # DEBUG: Log masked key information
-    if api_key:
-        logger.info(f"API Key found (length: {len(api_key)}, starts with: {api_key[:4]}...)")
-        print(f"DEBUG: API Key found (len={len(api_key)})")
-    else:
         logger.warning("Neither GOOGLE_API_KEY nor GEMINI_API_KEY found in environment variables")
-        print("DEBUG: No API keys found in environment")
         return None
-    
+
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    init_errors: List[str] = []
+
     try:
-        genai.configure(api_key=api_key)
-        # Reverted to gemini-2.5-flash as per user request
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        logger.info("✓ Google Gemini API initialized successfully")
-        print("DEBUG: Model successfully created")
-        return model
-    except Exception as e:
-        logger.error(f"CRITICAL: Failed to initialize Gemini API ({type(e).__name__}): {e}")
-        print(f"DEBUG: CRITICAL ERROR: {str(e)}")
+        from google import genai as google_genai
+
+        client = google_genai.Client(api_key=api_key)
+        logger.info("✓ Google Gemini API initialized via google-genai")
+        return _GeminiModelAdapter(client, model_name, "new")
+    except Exception as new_sdk_error:
+        init_errors.append(f"google-genai: {type(new_sdk_error).__name__}: {new_sdk_error}")
+        logger.warning("google-genai initialization failed; trying legacy SDK")
+
+    try:
+        import google.generativeai as legacy_genai
+
+        legacy_genai.configure(api_key=api_key)
+        logger.info("✓ Google Gemini API initialized via google-generativeai")
+        return _GeminiModelAdapter(legacy_genai.GenerativeModel(model_name), model_name, "legacy")
+    except Exception as legacy_error:
+        init_errors.append(f"google-generativeai: {type(legacy_error).__name__}: {legacy_error}")
+        logger.error("CRITICAL: Failed to initialize Gemini API: %s", " | ".join(init_errors))
         return None
 
 
@@ -202,14 +232,40 @@ def extract_research_subject(query: str) -> str:
     cleaned_query = re.sub(r"[\s\t\n\r]+", " ", query).strip().strip(".?!,")
 
     extraction_patterns = [
-        r"(?:market overview of|overview of|company profile of|financial overview of|research|analyze|analyse|tell me about|learn about|look into|find out about)\s+(.+)$",
-        r"(?:about|of|for|on|regarding)\s+(.+)$",
+        r"(?:market overview of|overview of|company profile of|financial overview of|tell me about|learn about|look into|find out about|research|analyze|analyse)\s+(.+)$",
+        r"^what about\s+(.+)$",
+        r"^tell me more about\s+(.+)$",
+        r"(?:\babout\b|\bof\b|\bon\b|\bregarding\b)\s+(.+)$",
     ]
+
+    def _clean_candidate(candidate: str) -> str:
+        candidate = candidate.strip().strip(".?!,")
+        candidate = re.sub(r"^(?:the|a|an)\s+", "", candidate, flags=re.IGNORECASE)
+        tokens = candidate.split()
+        trim_tokens = {
+            "company",
+            "information",
+            "news",
+            "recent",
+            "latest",
+            "financial",
+            "financials",
+            "overview",
+            "profile",
+            "strategy",
+            "competitor",
+            "competitors",
+            "market",
+            "position",
+        }
+        while tokens and tokens[-1].lower().strip(".?!,") in trim_tokens:
+            tokens.pop()
+        return " ".join(tokens).strip().strip(".?!,")
 
     for pattern in extraction_patterns:
         match = re.search(pattern, cleaned_query, re.IGNORECASE)
         if match:
-            candidate = match.group(1).strip().strip(".?!,")
+            candidate = _clean_candidate(match.group(1))
             if candidate:
                 return candidate
 
@@ -219,10 +275,10 @@ def extract_research_subject(query: str) -> str:
         cleaned_query,
         flags=re.IGNORECASE,
     )
-    leading_noise = re.sub(r"^(?:a|an|the)\s+", "", leading_noise, flags=re.IGNORECASE)
+    leading_noise = _clean_candidate(leading_noise)
 
     if leading_noise:
-        return leading_noise.strip().strip(".?!,")
+        return leading_noise
 
     return cleaned_query
 
@@ -280,10 +336,19 @@ def search_duckduckgo(query: str, max_results: int = 5) -> str:
         return f"DuckDuckGo search error: {str(e)}"
 
 
+def create_search_tool(max_results: int = 5):
+    """Return a simple callable search tool for compatibility with older tests."""
+
+    def _search(query: str) -> str:
+        return search_duckduckgo(query, max_results=max_results)
+
+    return _search
+
+
 class ClarityAgent:
     """Agent responsible for evaluating query clarity and specificity."""
     
-    def __init__(self, model):
+    def __init__(self, model: Optional[Any] = None):
         self.model = model
     
     def evaluate_clarity(self, query: str, context: str = "") -> Dict[str, Any]:
@@ -297,14 +362,18 @@ class ClarityAgent:
             }
         
         if not self.model:
-            # Fallback: Simple keyword-based clarity check
-            keywords = ["company", "organization", "business", "firm", "corporation", "inc", "ltd", "llc"]
-            has_company_ref = any(kw in query.lower() for kw in keywords) or len(query.split()) > 2
-            
-            if has_company_ref and len(query.strip()) > 10:
+            # Fallback: conservative keyword-based clarity check.
+            normalized_query = query.strip().lower()
+            ambiguous_terms = {"it", "they", "them", "their", "this", "that", "those", "these", "one", "there"}
+            company_suffixes = ("inc", "inc.", "corp", "corp.", "corporation", "ltd", "ltd.", "llc", "plc", "co", "co.", "company")
+            has_company_like_token = bool(re.search(r"\b[A-Z][A-Za-z0-9&.-]{1,}\b", query)) or any(suffix in normalized_query for suffix in company_suffixes)
+            has_context_anchor = bool(context.strip())
+            has_ambiguity_marker = any(term in normalized_query.split() for term in ambiguous_terms) or any(term in normalized_query for term in ["what about", "how about", "tell me more", "more about"])
+
+            if has_company_like_token or (has_context_anchor and not has_ambiguity_marker):
                 return {
                     "clarity_status": ClarityStatus.CLEAR,
-                    "explanation": "Query contains company reference and is specific enough",
+                    "explanation": "Query contains a specific company reference or follows established conversation context",
                     "clarification_prompt": ""
                 }
             else:
@@ -356,7 +425,7 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
 class ResearchAgent:
     """Agent responsible for researching company information using DuckDuckGo."""
     
-    def __init__(self, model):
+    def __init__(self, model: Optional[Any] = None):
         self.model = model
     
     def research_company(self, company_name: str, user_context: str = "") -> Dict[str, Any]:
@@ -371,9 +440,9 @@ class ResearchAgent:
         
         try:
             search_subject = extract_research_subject(company_name)
-            search_query = f"{search_subject} company information recent news financial"
+            search_query = search_subject
             if user_context:
-                search_query += f" {user_context}"
+                search_query = f"{search_subject} {user_context}".strip()
             
             logger.info(f"Searching DuckDuckGo for: {search_query}")
             
@@ -445,7 +514,7 @@ CONFIDENCE_SCORE: [0-10]"""
 class ValidatorAgent:
     """Agent responsible for validating research quality and completeness."""
     
-    def __init__(self, model):
+    def __init__(self, model: Optional[Any] = None):
         self.model = model
     
     def validate_research(
@@ -463,7 +532,10 @@ class ValidatorAgent:
             }
         
         if not self.model:
-            if confidence_score >= 6 and len(research_findings) > 100:
+            normalized_findings = research_findings.lower()
+            keyword_hits = sum(1 for keyword in ["company", "financial", "revenue", "market", "ceo", "leadership", "strategy", "overview"] if keyword in normalized_findings)
+
+            if confidence_score >= 6 and len(research_findings) > 40 and keyword_hits >= 1:
                 return {
                     "validation_result": ValidationResult.SUFFICIENT,
                     "validation_notes": "Research findings are adequate"
@@ -519,7 +591,7 @@ Respond ONLY with valid JSON:
 class SynthesisAgent:
     """Agent responsible for synthesizing research findings into coherent responses."""
     
-    def __init__(self, model):
+    def __init__(self, model: Optional[Any] = None):
         self.model = model
     
     def synthesize(
@@ -729,9 +801,11 @@ class BusinessResearchGraph:
                 "clarification_needed": False,
                 "confidence_score": 0.0
             }
-        
+
         if state is None:
             state = AgentState()
+        elif isinstance(state, dict):
+            state = AgentState.model_validate(state)
         
         state.messages.append(HumanMessage(content=user_input))
         state.current_query = user_input
@@ -744,6 +818,8 @@ class BusinessResearchGraph:
         
         try:
             result_state = self.graph.invoke(state)
+            if isinstance(result_state, dict):
+                result_state = AgentState.model_validate(result_state)
             
             if result_state.final_response:
                 result_state.messages.append(AIMessage(content=result_state.final_response))
