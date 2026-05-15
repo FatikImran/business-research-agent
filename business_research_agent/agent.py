@@ -162,21 +162,27 @@ def get_gemini_model():
         return None
     
     api_key = os.getenv("GOOGLE_API_KEY")
-    
     if not api_key:
         api_key = os.getenv("GEMINI_API_KEY")
     
-    if not api_key:
+    # DEBUG: Log masked key information
+    if api_key:
+        logger.info(f"API Key found (length: {len(api_key)}, starts with: {api_key[:4]}...)")
+    else:
         logger.warning("Neither GOOGLE_API_KEY nor GEMINI_API_KEY found in environment variables")
         return None
     
     try:
         genai.configure(api_key=api_key)
-        # Using gemini-1.5-flash as it's the current stable high-speed model
+        # Reverted to gemini-2.5-flash as per user request
         model = genai.GenerativeModel('gemini-2.5-flash')
+        # Test model availability with a lightweight request
+        # model.get_model() # This verifies the model exists in the project
         logger.info("✓ Google Gemini API initialized successfully")
         return model
     except Exception as e:
+        logger.error(f"CRITICAL: Failed to initialize Gemini API ({type(e).__name__}): {e}")
+        return None
         logger.error(f"Failed to initialize Gemini API: {e}")
         return None
 

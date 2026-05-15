@@ -114,6 +114,11 @@ def validate_query(query: str) -> tuple[bool, Optional[str]]:
 @app.route('/api/research', methods=['POST', 'OPTIONS'])
 def research():
     """Handle research requests from the Vercel frontend."""
+    # Ensure environment variables are reloaded from OS
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     start_time = datetime.now()
     
     try:
@@ -155,12 +160,19 @@ def research():
         if not model_active:
             # Fallback: use search directly
             try:
+                # DEBUG: Log environment state
+                env_keys = list(os.environ.keys())
+                has_g_key = 'GOOGLE_API_KEY' in os.environ
+                has_gem_key = 'GEMINI_API_KEY' in os.environ
+                
                 search_results = search_duckduckgo(query, max_results=5)
                 execution_time = (datetime.now() - start_time).total_seconds() * 1000
                 
+                debug_info = f" (AI Offline. Key Detected: G={has_g_key}, GEM={has_gem_key})"
+                
                 return jsonify({
                     'success': True,
-                    'response': f"Search results for '{query}':\n\n{search_results}\n\n(AI Assistant Offline - Check API Keys)",
+                    'response': f"Search results for '{query}':\n\n{search_results}\n\n{debug_info}",
                     'confidence': 5,
                     'sources': ['DuckDuckGo (Fallback)'],
                     'timestamp': datetime.now().isoformat(),
