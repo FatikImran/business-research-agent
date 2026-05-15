@@ -51,7 +51,7 @@ export async function generateResearchReply(userMessage: string): Promise<Resear
           role: "user",
           parts: [
             {
-              text: `${RESEARCH_SYSTEM_PROMPT}\n\nUser query: ${userMessage}\n\nReturn a concise market overview with clear caveats if current data is unavailable.`,
+              text: `${RESEARCH_SYSTEM_PROMPT}\n\nUser query: ${userMessage}\n\nAnswer directly. Do not ask the user to provide research snippets unless the query itself is ambiguous. Return a concise market overview with clear caveats if current data is unavailable.`,
             },
           ],
         },
