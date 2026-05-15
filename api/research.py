@@ -1,7 +1,7 @@
 """
-Vercel Serverless Python Function
-Exposes the Business Research Agent as an HTTP API
-Handler for POST requests with research queries
+Vercel Python API for the Business Research Agent.
+
+This is exposed as a Flask app so Vercel can mount it as a Python entrypoint.
 """
 
 import json
@@ -9,6 +9,8 @@ import sys
 import os
 from datetime import datetime
 from typing import Optional, Dict, Any
+
+from flask import Flask, jsonify, request
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,8 +29,9 @@ except ImportError:
         search_duckduckgo,
     )
 
-# Initialize the graph once (Vercel reuses containers)
+# Vercel reuses containers, so initialize the graph lazily once.
 _graph = None
+app = Flask(__name__)
 
 def get_graph():
     """Lazy initialization of the graph to save cold start time"""
@@ -53,6 +56,14 @@ def create_cors_headers() -> Dict[str, str]:
     }
 
 
+@app.after_request
+def add_cors_headers(response):
+    """Attach CORS headers to every response."""
+    for key, value in create_cors_headers().items():
+        response.headers[key] = value
+    return response
+
+
 def validate_query(query: str) -> tuple[bool, Optional[str]]:
     """Validate query input"""
     if not query:
@@ -71,54 +82,32 @@ def validate_query(query: str) -> tuple[bool, Optional[str]]:
     return True, None
 
 
-def handler(request):
-    """
-    Main Vercel handler function
-    Receives POST requests with research queries
-    Returns JSON with research results
-    """
+@app.route('/', methods=['POST', 'OPTIONS'])
+def research():
+    """Handle research requests from the Vercel frontend."""
     start_time = datetime.now()
-    headers = create_cors_headers()
     
     try:
         # Handle CORS preflight
         if request.method == 'OPTIONS':
-            return {
-                'statusCode': 200,
-                'headers': headers,
-            }
+            return ('', 200)
         
         # Only accept POST
         if request.method != 'POST':
-            return {
-                'statusCode': 405,
-                'headers': headers,
-                'body': json.dumps({'error': 'Method not allowed. Use POST.'})
-            }
+            return jsonify({'error': 'Method not allowed. Use POST.'}), 405
         
         # Parse request body
         try:
-            if isinstance(request.body, str):
-                body = json.loads(request.body) if request.body else {}
-            else:
-                body = request.body if request.body else {}
+            body = request.get_json(silent=True) or {}
         except json.JSONDecodeError:
-            return {
-                'statusCode': 400,
-                'headers': headers,
-                'body': json.dumps({'error': 'Invalid JSON in request body'})
-            }
+            return jsonify({'error': 'Invalid JSON in request body'}), 400
         
         # Extract and validate query
         query = body.get('query', '').strip() if body.get('query') else ''
         is_valid, error_msg = validate_query(query)
         
         if not is_valid:
-            return {
-                'statusCode': 400,
-                'headers': headers,
-                'body': json.dumps({'error': error_msg})
-            }
+            return jsonify({'error': error_msg}), 400
         
         # Get or initialize graph
         graph = get_graph()
@@ -129,24 +118,16 @@ def handler(request):
                 search_results = search_duckduckgo(query, max_results=5)
                 execution_time = (datetime.now() - start_time).total_seconds() * 1000
                 
-                return {
-                    'statusCode': 200,
-                    'headers': headers,
-                    'body': json.dumps({
-                        'success': True,
-                        'response': f"Search results for '{query}':\n\n{search_results}",
-                        'confidence': 5,
-                        'sources': ['DuckDuckGo (Fallback)'],
-                        'timestamp': datetime.now().isoformat(),
-                        'execution_time_ms': execution_time,
-                    })
-                }
+                return jsonify({
+                    'success': True,
+                    'response': f"Search results for '{query}':\n\n{search_results}",
+                    'confidence': 5,
+                    'sources': ['DuckDuckGo (Fallback)'],
+                    'timestamp': datetime.now().isoformat(),
+                    'execution_time_ms': execution_time,
+                })
             except Exception as e:
-                return {
-                    'statusCode': 500,
-                    'headers': headers,
-                    'body': json.dumps({'error': f'System initialization failed: {str(e)}'})
-                }
+                return jsonify({'error': f'System initialization failed: {str(e)}'}), 500
         
         # Run the research workflow
         try:
@@ -177,19 +158,15 @@ def handler(request):
             if execution_time > 9000:
                 print(f"Warning: Slow execution ({execution_time}ms)")
             
-            return {
-                'statusCode': 200,
-                'headers': headers,
-                'body': json.dumps({
-                    'success': True,
-                    'response': result.get('final_response', ''),
-                    'confidence': float(result.get('confidence_score', 0)),
-                    'clarification_needed': result.get('clarity_status') == 'needs_clarification',
-                    'clarification_prompt': result.get('clarification_prompt', ''),
-                    'timestamp': datetime.now().isoformat(),
-                    'execution_time_ms': execution_time,
-                })
-            }
+            return jsonify({
+                'success': True,
+                'response': result.get('final_response', ''),
+                'confidence': float(result.get('confidence_score', 0)),
+                'clarification_needed': result.get('clarity_status') == 'needs_clarification',
+                'clarification_prompt': result.get('clarification_prompt', ''),
+                'timestamp': datetime.now().isoformat(),
+                'execution_time_ms': execution_time,
+            })
         
         except Exception as agent_error:
             print(f"Agent Error: {str(agent_error)}")
@@ -199,18 +176,14 @@ def handler(request):
                 search_results = search_duckduckgo(query, max_results=5)
                 execution_time = (datetime.now() - start_time).total_seconds() * 1000
                 
-                return {
-                    'statusCode': 200,
-                    'headers': headers,
-                    'body': json.dumps({
-                        'success': True,
-                        'response': f"Search results for '{query}':\n\n{search_results}\n\n(Note: Using fallback search mode)",
-                        'confidence': 5,
-                        'sources': ['DuckDuckGo (Fallback)'],
-                        'timestamp': datetime.now().isoformat(),
-                        'execution_time_ms': execution_time,
-                    })
-                }
+                return jsonify({
+                    'success': True,
+                    'response': f"Search results for '{query}':\n\n{search_results}\n\n(Note: Using fallback search mode)",
+                    'confidence': 5,
+                    'sources': ['DuckDuckGo (Fallback)'],
+                    'timestamp': datetime.now().isoformat(),
+                    'execution_time_ms': execution_time,
+                })
             except Exception as search_error:
                 raise Exception(f"Agent failed: {str(agent_error)}, Search failed: {str(search_error)}")
     
@@ -218,11 +191,16 @@ def handler(request):
         print(f"Error: {str(e)}")
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        return {
-            'statusCode': 500,
-            'headers': headers,
-            'body': json.dumps({
-                'error': str(e),
-                'execution_time_ms': execution_time,
-            })
-        }
+        return jsonify({
+            'error': str(e),
+            'execution_time_ms': execution_time,
+        }), 500
+
+
+@app.route('/', methods=['GET'])
+def health_check():
+    """Simple health check so the function responds with JSON."""
+    return jsonify({
+        'success': True,
+        'message': 'Business Research API is running',
+    })

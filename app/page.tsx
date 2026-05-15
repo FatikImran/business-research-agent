@@ -69,7 +69,16 @@ export default function Home() {
         })
       });
 
-      const data: ApiResponse = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      const rawBody = await response.text();
+      let data: ApiResponse;
+
+      if (contentType.includes('application/json')) {
+        data = JSON.parse(rawBody) as ApiResponse;
+      } else {
+        const fallbackMessage = rawBody.trim() || 'The server returned a non-JSON response.';
+        throw new Error(fallbackMessage.slice(0, 240));
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || data.response || `API error: ${response.status}`);
