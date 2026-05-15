@@ -1,0 +1,78 @@
+# Version Control
+.git
+.gitignore
+.gitattributes
+
+# Local Environment Variables
+.env.local
+.env.*.local
+
+# Testing & Reports
+test_final.py
+test_report.json
+*.test.py
+*.spec.py
+__pycache__
+pytest_cache
+.pytest_cache
+coverage
+
+# IDE & Editor
+.vscode
+.idea
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Python
+venv/
+env/
+ENV/
+.venv
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info
+dist/
+build/
+*.egg
+
+# OS
+.DS_Store
+.Thumbs.db
+._*
+
+# Logs & Temp
+*.log
+debug_logs/
+temp/
+tmp/
+*.pid
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+.yarn-cache
+
+# Project Specific
+business_research_agent/__pycache__/
+cli.py
+FINAL_REPORT.md
+AI_PROMPTS_DOCUMENTATION.md
+README.md
+
+# Build
+.next/build
+dist/
+build/
+*.tsbuildinfo
+
+# Development
+.env
+.env.test
