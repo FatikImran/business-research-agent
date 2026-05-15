@@ -58,6 +58,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Search multiple .env locations
+load_dotenv() # Root
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env')) # /business_research_agent/.env
+load_dotenv(os.path.join(os.getcwd(), 'business_research_agent', '.env')) # Absolute from cwd
+
 
 class ClarityStatus(str, Enum):
     """Status of query clarity evaluation."""
@@ -159,11 +164,15 @@ def get_gemini_model():
     api_key = os.getenv("GOOGLE_API_KEY")
     
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not found in environment variables")
+        api_key = os.getenv("GEMINI_API_KEY")
+    
+    if not api_key:
+        logger.warning("Neither GOOGLE_API_KEY nor GEMINI_API_KEY found in environment variables")
         return None
     
     try:
         genai.configure(api_key=api_key)
+        # Using gemini-1.5-flash as it's the current stable high-speed model
         model = genai.GenerativeModel('gemini-2.5-flash')
         logger.info("✓ Google Gemini API initialized successfully")
         return model

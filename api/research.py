@@ -149,7 +149,10 @@ def research():
         # Get or initialize graph
         graph = get_graph()
         
-        if not graph:
+        # Check if model was actually initialized within the graph
+        model_active = graph is not None and graph.model is not None
+        
+        if not model_active:
             # Fallback: use search directly
             try:
                 search_results = search_duckduckgo(query, max_results=5)
@@ -157,7 +160,7 @@ def research():
                 
                 return jsonify({
                     'success': True,
-                    'response': f"Search results for '{query}':\n\n{search_results}",
+                    'response': f"Search results for '{query}':\n\n{search_results}\n\n(AI Assistant Offline - Check API Keys)",
                     'confidence': 5,
                     'sources': ['DuckDuckGo (Fallback)'],
                     'timestamp': datetime.now().isoformat(),
