@@ -168,29 +168,86 @@ def get_gemini_model():
         return None
 
 
+def extract_research_subject(query: str) -> str:
+    """Extract the most likely company or topic from a natural-language research query."""
+    if not query:
+        return ""
+
+    cleaned_query = re.sub(r"[\s\t\n\r]+", " ", query).strip().strip(".?!,")
+
+    extraction_patterns = [
+        r"(?:market overview of|overview of|company profile of|financial overview of|research|analyze|analyse|tell me about|learn about|look into|find out about)\s+(.+)$",
+        r"(?:about|of|for|on|regarding)\s+(.+)$",
+    ]
+
+    for pattern in extraction_patterns:
+        match = re.search(pattern, cleaned_query, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip().strip(".?!,")
+            if candidate:
+                return candidate
+
+    leading_noise = re.sub(
+        r"^(?:please\s+)?(?:give me|tell me|research|analyze|analyse|summarize|summarise|show me|what is|what are|find|look up|provide)\s+",
+        "",
+        cleaned_query,
+        flags=re.IGNORECASE,
+    )
+    leading_noise = re.sub(r"^(?:a|an|the)\s+", "", leading_noise, flags=re.IGNORECASE)
+
+    if leading_noise:
+        return leading_noise.strip().strip(".?!,")
+
+    return cleaned_query
+
+
 def search_duckduckgo(query: str, max_results: int = 5) -> str:
     """
     Perform a search using DuckDuckGo (completely free, no API key).
     """
     if not DDGS_AVAILABLE:
         logger.warning("duckduckgo_search not installed")
-        return ""
+        return "DuckDuckGo search is unavailable in this environment."
     
     try:
         ddgs = DDGS()
-        results = ddgs.text(query, max_results=max_results)
-        
-        formatted_results = "Search Results:\n\n"
-        for i, result in enumerate(results, 1):
-            formatted_results += f"{i}. {result.get('title', 'No title')}\n"
-            formatted_results += f"   {result.get('body', 'No description')}\n"
-            formatted_results += f"   Source: {result.get('href', 'No URL')}\n\n"
-        
-        return formatted_results
+        subject = extract_research_subject(query)
+        search_variants = [
+            f"{subject} company information recent news financial",
+            f"{subject} market overview",
+            f"{subject} stock news financials",
+            subject,
+        ]
+
+        logger.info(f"DuckDuckGo normalized subject: {subject}")
+
+        for search_query in search_variants:
+            if not search_query.strip():
+                continue
+
+            try:
+                results = list(ddgs.text(search_query, max_results=max_results))
+            except Exception as search_error:
+                logger.warning(f"DuckDuckGo variant failed for '{search_query}': {search_error}")
+                results = []
+
+            if results:
+                formatted_results = f"Search query: {search_query}\n\nSearch Results:\n\n"
+                for i, result in enumerate(results, 1):
+                    formatted_results += f"{i}. {result.get('title', 'No title')}\n"
+                    formatted_results += f"   {result.get('body', 'No description')}\n"
+                    formatted_results += f"   Source: {result.get('href', 'No URL')}\n\n"
+
+                return formatted_results
+
+        return (
+            f"No search results were found for '{subject}'. "
+            "Try using a more specific company name or a ticker symbol."
+        )
     
     except Exception as e:
         logger.error(f"DuckDuckGo search error: {e}")
-        return ""
+        return f"DuckDuckGo search error: {str(e)}"
 
 
 class ClarityAgent:
@@ -286,7 +343,8 @@ class ResearchAgent:
             }
         
         try:
-            search_query = f"{company_name} company information recent news financial"
+            search_subject = extract_research_subject(company_name)
+            search_query = f"{search_subject} company information recent news financial"
             if user_context:
                 search_query += f" {user_context}"
             
@@ -296,7 +354,7 @@ class ResearchAgent:
             
             if not search_results or not search_results.strip():
                 return {
-                    "research_findings": f"No search results found for {company_name}",
+                    "research_findings": f"No search results found for {search_subject}",
                     "confidence_score": 3,
                     "source": "duckduckgo"
                 }
