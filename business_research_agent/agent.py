@@ -331,10 +331,7 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         
         try:
             response = self.model.generate_content(
-                f"{system_prompt}\n\n{user_message}",
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_UNSPECIFIED: HarmBlockThreshold.BLOCK_NONE,
-                }
+                f"{system_prompt}\n\n{user_message}"
             )
             
             response_text = response.text
@@ -408,10 +405,7 @@ FINDINGS:
 CONFIDENCE_SCORE: [0-10]"""
                 
                 response = self.model.generate_content(
-                    f"{system_prompt}\n\nSearch results for {company_name}:\n\n{search_results}",
-                    safety_settings={
-                        HarmCategory.HARM_CATEGORY_UNSPECIFIED: HarmBlockThreshold.BLOCK_NONE,
-                    }
+                    f"{system_prompt}\n\nSearch results for {company_name}:\n\n{search_results}"
                 )
                 
                 response_text = response.text
@@ -502,10 +496,7 @@ Respond ONLY with valid JSON:
         
         try:
             response = self.model.generate_content(
-                f"{system_prompt}\n\n{user_message}",
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_UNSPECIFIED: HarmBlockThreshold.BLOCK_NONE,
-                }
+                f"{system_prompt}\n\n{user_message}"
             )
             
             response_text = response.text
@@ -576,10 +567,7 @@ Please provide a professional, well-structured response addressing the user's qu
         
         try:
             response = self.model.generate_content(
-                f"{system_prompt}\n\n{user_message}",
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_UNSPECIFIED: HarmBlockThreshold.BLOCK_NONE,
-                }
+                f"{system_prompt}\n\n{user_message}"
             )
             
             return response.text
