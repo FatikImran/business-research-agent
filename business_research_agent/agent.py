@@ -91,15 +91,41 @@ class _GeminiModelAdapter:
         self.mode = mode
 
     def generate_content(self, prompt: str, **kwargs: Any) -> _GeminiResponseAdapter:
-        if self.mode == "new":
-            response = self._backend.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                **kwargs,
-            )
+        # Accept either a raw prompt string or a prebuilt `contents` list (structured messages)
+        contents = None
+        if isinstance(prompt, (list, tuple)):
+            contents = prompt
         else:
-            response = self._backend.generate_content(prompt, **kwargs)
-        return _GeminiResponseAdapter(response)
+            # Wrap raw prompt string into a single user message like the JS provider does
+            contents = [
+                {
+                    "role": "user",
+                    "parts": [{"text": str(prompt)}]
+                }
+            ]
+
+        try:
+            if self.mode == "new":
+                response = self._backend.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    **kwargs,
+                )
+            else:
+                # Legacy SDKs often accept a single prompt string; attempt with structured contents first
+                try:
+                    response = self._backend.generate_content(contents)
+                except Exception:
+                    # Fallback to joining parts into a single string
+                    joined = "\n\n".join(
+                        part.get("text", "") for msg in contents for part in msg.get("parts", [])
+                    )
+                    response = self._backend.generate_content(joined, **kwargs)
+
+            return _GeminiResponseAdapter(response)
+        except Exception as e:
+            logger.error(f"Gemini generate_content error: {e}")
+            raise
 
 
 class ClarityStatus(str, Enum):
@@ -407,10 +433,14 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         user_message = f"Query: {query}\nContext: {context}" if context else f"Query: {query}"
         
         try:
-            response = self.model.generate_content(
-                f"{system_prompt}\n\n{user_message}"
-            )
-            
+            logger.info("Calling Gemini for clarity evaluation")
+            response = self.model.generate_content([
+                {
+                    "role": "user",
+                    "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]
+                }
+            ])
+
             response_text = response.text
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
@@ -481,10 +511,14 @@ FINDINGS:
 
 CONFIDENCE_SCORE: [0-10]"""
                 
-                response = self.model.generate_content(
-                    f"{system_prompt}\n\nSearch results for {company_name}:\n\n{search_results}"
-                )
-                
+                logger.info("Calling Gemini for research summarization")
+                response = self.model.generate_content([
+                    {
+                        "role": "user",
+                        "parts": [{"text": f"{system_prompt}\n\nSearch results for {company_name}:\n\n{search_results}"}]
+                    }
+                ])
+
                 response_text = response.text
                 
                 confidence_score = 7
@@ -575,10 +609,14 @@ Respond ONLY with valid JSON:
         user_message = f"Query: {original_query}\n\nResearch Findings:\n{research_findings}"
         
         try:
-            response = self.model.generate_content(
-                f"{system_prompt}\n\n{user_message}"
-            )
-            
+            logger.info("Calling Gemini for validation")
+            response = self.model.generate_content([
+                {
+                    "role": "user",
+                    "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]
+                }
+            ])
+
             response_text = response.text
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
@@ -646,10 +684,14 @@ Research Findings to Synthesize:
 Please provide a professional, well-structured response addressing the user's query."""
         
         try:
-            response = self.model.generate_content(
-                f"{system_prompt}\n\n{user_message}"
-            )
-            
+            logger.info("Calling Gemini for synthesis")
+            response = self.model.generate_content([
+                {
+                    "role": "user",
+                    "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]
+                }
+            ])
+
             return response.text
         except Exception as e:
             logger.error(f"Error in synthesis: {e}")
