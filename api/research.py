@@ -119,6 +119,13 @@ def research():
     from dotenv import load_dotenv
     load_dotenv()
     
+    # DEBUG: Log raw AgentState fields to verify alignment
+    try:
+        from business_research_agent.agent import AgentState
+        print(f"DEBUG: AgentState fields: {AgentState.model_fields.keys()}")
+    except Exception as e:
+        print(f"DEBUG: Could not inspect AgentState: {e}")
+
     start_time = datetime.now()
     
     try:
@@ -209,8 +216,10 @@ def research():
                 "conversation_context": "",
                 "current_agent": "clarity",
                 "max_research_attempts": 3,
-                "clarification_prompt": "",
             }
+            
+            # CRITICAL: Debug log exactly what we're sending to LangGraph
+            print(f"DEBUG: Initializing graph with keys: {list(initial_state.keys())}")
             
             # Invoke the graph
             result = graph.graph.invoke(initial_state)
