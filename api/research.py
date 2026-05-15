@@ -200,7 +200,7 @@ def research():
                 "clarity_explanation": "",
                 "clarification_prompt": "",
                 "research_findings": "",
-                "confidence_score": 0,
+                "confidence_score": 0.0,
                 "search_source": "",
                 "research_attempts": 0,
                 "validation_result": "insufficient",
@@ -209,6 +209,7 @@ def research():
                 "conversation_context": "",
                 "current_agent": "clarity",
                 "max_research_attempts": 3,
+                "clarification_prompt": "",
             }
             
             # Invoke the graph
