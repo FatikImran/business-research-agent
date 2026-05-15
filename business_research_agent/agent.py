@@ -35,10 +35,14 @@ except ImportError:
     GENAI_AVAILABLE = False
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
     DDGS_AVAILABLE = True
 except ImportError:
-    DDGS_AVAILABLE = False
+    try:
+        from duckduckgo_search import DDGS
+        DDGS_AVAILABLE = True
+    except ImportError:
+        DDGS_AVAILABLE = False
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END, START
@@ -212,11 +216,14 @@ def search_duckduckgo(query: str, max_results: int = 5) -> str:
     try:
         ddgs = DDGS()
         subject = extract_research_subject(query)
+        
+        # More diverse search variants to increase chance of results
         search_variants = [
-            f"{subject} company information recent news financial",
-            f"{subject} market overview",
-            f"{subject} stock news financials",
+            f"{subject} company information news financials",
             subject,
+            f"what is {subject} company",
+            f"{subject} official website",
+            f"latest news about {subject}"
         ]
 
         logger.info(f"DuckDuckGo normalized subject: {subject}")
@@ -226,7 +233,8 @@ def search_duckduckgo(query: str, max_results: int = 5) -> str:
                 continue
 
             try:
-                results = list(ddgs.text(search_query, max_results=max_results))
+                # Use text() with region="wt-wt" (global) and try/except for specific queries
+                results = list(ddgs.text(search_query, max_results=max_results, region="wt-wt"))
             except Exception as search_error:
                 logger.warning(f"DuckDuckGo variant failed for '{search_query}': {search_error}")
                 results = []
@@ -242,7 +250,7 @@ def search_duckduckgo(query: str, max_results: int = 5) -> str:
 
         return (
             f"No search results were found for '{subject}'. "
-            "Try using a more specific company name or a ticker symbol."
+            "Please ensure the company name is spelled correctly or try using a more specific name."
         )
     
     except Exception as e:
