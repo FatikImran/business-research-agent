@@ -184,19 +184,13 @@ def get_gemini_model():
     try:
         genai.configure(api_key=api_key)
         # Reverted to gemini-2.5-flash as per user request
-        # model = genai.GenerativeModel('gemini-2.5-flash')
-        # Actually checking available models or just using the string
         model = genai.GenerativeModel('gemini-2.5-flash')
-        # Force a test call to prove it works right now
-        # response = model.generate_content("ping") 
         logger.info("✓ Google Gemini API initialized successfully")
         print("DEBUG: Model successfully created")
         return model
     except Exception as e:
         logger.error(f"CRITICAL: Failed to initialize Gemini API ({type(e).__name__}): {e}")
         print(f"DEBUG: CRITICAL ERROR: {str(e)}")
-        return None
-        logger.error(f"Failed to initialize Gemini API: {e}")
         return None
 
 
