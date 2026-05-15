@@ -44,6 +44,7 @@ function buildDebugMessage(response: Response, rawBody: string) {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationState, setConversationState] = useState<any>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +88,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           query: userMessage,
-          previous_messages: messages
+          previous_messages: messages,
+          state: conversationState,
         })
       });
 
@@ -116,6 +118,10 @@ export default function Home() {
         timestamp: data.timestamp
       }]);
 
+      if (data.state) {
+        setConversationState(data.state);
+      }
+
       // Show clarification if needed
       if (data.clarification_needed && data.clarification_prompt) {
         setError(`ℹ️ ${data.clarification_prompt}`);
@@ -132,6 +138,7 @@ export default function Home() {
 
   const clearChat = () => {
     setMessages([]);
+    setConversationState(null);
     setError('');
   };
 
