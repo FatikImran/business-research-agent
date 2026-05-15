@@ -166,6 +166,14 @@ class AgentState(BaseModel):
         default="",
         description="Prompt for user clarification if needed"
     )
+    awaiting_clarification: bool = Field(
+        default=False,
+        description="Whether the workflow is waiting for the user to clarify"
+    )
+    pending_query: str = Field(
+        default="",
+        description="The original query that needs clarification"
+    )
     
     research_findings: str = Field(
         default="",
@@ -732,7 +740,7 @@ class BusinessResearchGraph:
             {"clarification": "clarification_interrupt", "research": "research"}
         )
         
-        graph.add_edge("clarification_interrupt", "clarity")
+        graph.add_edge("clarification_interrupt", END)
         
         graph.add_conditional_edges(
             "research",
@@ -821,7 +829,50 @@ class BusinessResearchGraph:
     def _clarification_interrupt_node(self, state: AgentState) -> AgentState:
         logger.info("[Clarification] Prompting user for clarification")
         state.current_agent = "clarification_interrupt"
+        state.awaiting_clarification = True
+        if not state.pending_query:
+            state.pending_query = state.current_query
         return state
+
+    def _serialize_state(self, state: AgentState) -> Dict[str, Any]:
+        def _serialize_message(message: BaseMessage) -> Dict[str, Any]:
+            role = "user"
+            if isinstance(message, AIMessage):
+                role = "assistant"
+            elif isinstance(message, HumanMessage):
+                role = "user"
+            return {
+                "role": role,
+                "type": type(message).__name__,
+                "content": getattr(message, "content", ""),
+            }
+
+        payload = state.model_dump()
+        payload["messages"] = [_serialize_message(message) for message in state.messages]
+        return payload
+
+    def _hydrate_state(self, state_payload: Dict[str, Any]) -> AgentState:
+        payload = dict(state_payload)
+        raw_messages = payload.get("messages", [])
+        hydrated_messages: List[BaseMessage] = []
+
+        for message in raw_messages:
+            if isinstance(message, HumanMessage) or isinstance(message, AIMessage):
+                hydrated_messages.append(message)
+                continue
+
+            if not isinstance(message, dict):
+                continue
+
+            content = str(message.get("content", ""))
+            role = str(message.get("role") or message.get("type") or "user").lower()
+            if role in {"assistant", "ai", "assistantmessage", "aimessage"}:
+                hydrated_messages.append(AIMessage(content=content))
+            else:
+                hydrated_messages.append(HumanMessage(content=content))
+
+        payload["messages"] = hydrated_messages
+        return AgentState.model_validate(payload)
     
     def _route_from_clarity(self, state: AgentState) -> str:
         if state.clarity_status == ClarityStatus.NEEDS_CLARIFICATION:
@@ -855,10 +906,18 @@ class BusinessResearchGraph:
         if state is None:
             state = AgentState()
         elif isinstance(state, dict):
-            state = AgentState.model_validate(state)
-        
-        state.messages.append(HumanMessage(content=user_input))
-        state.current_query = user_input
+            state = self._hydrate_state(state)
+
+        if state.awaiting_clarification and state.pending_query:
+            state.messages.append(HumanMessage(content=user_input))
+            resolved_query = f"{state.pending_query} {user_input}".strip()
+            state.current_query = resolved_query
+            state.pending_query = ""
+            state.awaiting_clarification = False
+            state.clarification_prompt = ""
+        else:
+            state.messages.append(HumanMessage(content=user_input))
+            state.current_query = user_input
         
         if len(state.messages) > 2:
             state.conversation_context = " ".join([
@@ -879,10 +938,11 @@ class BusinessResearchGraph:
             return {
                 "response": result_state.final_response or result_state.clarification_prompt,
                 "status": "success",
-                "clarification_needed": result_state.clarity_status == ClarityStatus.NEEDS_CLARIFICATION,
+                "clarification_needed": result_state.clarity_status == ClarityStatus.NEEDS_CLARIFICATION or result_state.awaiting_clarification,
                 "confidence_score": result_state.confidence_score,
+                "source": result_state.search_source,
                 "validation_result": result_state.validation_result.value if result_state.validation_result else None,
-                "state": result_state
+                "state": self._serialize_state(result_state)
             }
         
         except Exception as e:
