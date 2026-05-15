@@ -56,11 +56,39 @@ def create_cors_headers() -> Dict[str, str]:
     }
 
 
+def debug_headers(mode: str, query: str = '', status: str = '', preview: str = '') -> Dict[str, str]:
+    """Attach lightweight debugging metadata to responses."""
+    headers = {
+        'X-Response-Mode': mode,
+    }
+
+    if query:
+        headers['X-Debug-Query'] = query[:80]
+
+    if status:
+        headers['X-Debug-Status'] = status[:80]
+
+    if preview:
+        headers['X-Debug-Preview'] = preview[:200]
+
+    return headers
+
+
 @app.after_request
 def add_cors_headers(response):
     """Attach CORS headers to every response."""
     for key, value in create_cors_headers().items():
         response.headers[key] = value
+    return response
+
+
+@app.after_request
+def add_debug_headers(response):
+    """Attach debug headers when present on the response object."""
+    debug = getattr(response, '_debug_headers', None)
+    if isinstance(debug, dict):
+        for key, value in debug.items():
+            response.headers[key] = value
     return response
 
 
@@ -83,6 +111,7 @@ def validate_query(query: str) -> tuple[bool, Optional[str]]:
 
 
 @app.route('/', methods=['POST', 'OPTIONS'])
+@app.route('/api/research', methods=['POST', 'OPTIONS'])
 def research():
     """Handle research requests from the Vercel frontend."""
     start_time = datetime.now()
@@ -90,24 +119,32 @@ def research():
     try:
         # Handle CORS preflight
         if request.method == 'OPTIONS':
-            return ('', 200)
+            response = jsonify({'success': True, 'message': 'CORS preflight ok'})
+            response._debug_headers = debug_headers('preflight')
+            return response, 200
         
         # Only accept POST
         if request.method != 'POST':
-            return jsonify({'error': 'Method not allowed. Use POST.'}), 405
+            response = jsonify({'error': 'Method not allowed. Use POST.'})
+            response._debug_headers = debug_headers('error', status='method-not-allowed')
+            return response, 405
         
         # Parse request body
         try:
             body = request.get_json(silent=True) or {}
         except json.JSONDecodeError:
-            return jsonify({'error': 'Invalid JSON in request body'}), 400
+            response = jsonify({'error': 'Invalid JSON in request body'})
+            response._debug_headers = debug_headers('error', status='invalid-json')
+            return response, 400
         
         # Extract and validate query
         query = body.get('query', '').strip() if body.get('query') else ''
         is_valid, error_msg = validate_query(query)
         
         if not is_valid:
-            return jsonify({'error': error_msg}), 400
+            response = jsonify({'error': error_msg})
+            response._debug_headers = debug_headers('error', query=query, status=error_msg)
+            return response, 400
         
         # Get or initialize graph
         graph = get_graph()
@@ -127,7 +164,9 @@ def research():
                     'execution_time_ms': execution_time,
                 })
             except Exception as e:
-                return jsonify({'error': f'System initialization failed: {str(e)}'}), 500
+                response = jsonify({'error': f'System initialization failed: {str(e)}'})
+                response._debug_headers = debug_headers('error', query=query, status='graph-init-failed', preview=str(e))
+                return response, 500
         
         # Run the research workflow
         try:
@@ -191,16 +230,21 @@ def research():
         print(f"Error: {str(e)}")
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        return jsonify({
+        response = jsonify({
             'error': str(e),
             'execution_time_ms': execution_time,
-        }), 500
+        })
+        response._debug_headers = debug_headers('error', status='unhandled-exception', preview=str(e))
+        return response, 500
 
 
 @app.route('/', methods=['GET'])
+@app.route('/api/research', methods=['GET'])
 def health_check():
     """Simple health check so the function responds with JSON."""
-    return jsonify({
+    response = jsonify({
         'success': True,
         'message': 'Business Research API is running',
     })
+    response._debug_headers = debug_headers('health')
+    return response

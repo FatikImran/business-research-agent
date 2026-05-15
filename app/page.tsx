@@ -20,6 +20,28 @@ interface ApiResponse {
   error?: string;
 }
 
+function buildDebugMessage(response: Response, rawBody: string) {
+  const headers = [
+    ['Status', `${response.status} ${response.statusText}`],
+    ['Content-Type', response.headers.get('content-type') || 'unknown'],
+    ['Response-Mode', response.headers.get('x-response-mode') || 'missing'],
+    ['Debug-Status', response.headers.get('x-debug-status') || 'missing'],
+    ['Debug-Query', response.headers.get('x-debug-query') || 'missing'],
+    ['Debug-Preview', response.headers.get('x-debug-preview') || 'missing'],
+  ]
+    .map(([label, value]) => `${label}: ${value}`)
+    .join('\n');
+
+  const bodyPreview = rawBody.trim().slice(0, 600) || '[empty body]';
+
+  return [
+    'The server returned HTML or another non-JSON response.',
+    headers,
+    'Body preview:',
+    bodyPreview,
+  ].join('\n\n');
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -74,10 +96,13 @@ export default function Home() {
       let data: ApiResponse;
 
       if (contentType.includes('application/json')) {
-        data = JSON.parse(rawBody) as ApiResponse;
+        try {
+          data = JSON.parse(rawBody) as ApiResponse;
+        } catch {
+          throw new Error(buildDebugMessage(response, rawBody));
+        }
       } else {
-        const fallbackMessage = rawBody.trim() || 'The server returned a non-JSON response.';
-        throw new Error(fallbackMessage.slice(0, 240));
+        throw new Error(buildDebugMessage(response, rawBody));
       }
 
       if (!response.ok || !data.success) {
