@@ -168,11 +168,19 @@ def research():
                 search_results = search_duckduckgo(query, max_results=5)
                 execution_time = (datetime.now() - start_time).total_seconds() * 1000
                 
-                debug_info = f" (AI Offline. Key Detected: G={has_g_key}, GEM={has_gem_key})"
+                # Check environment variables
+                g_key = os.environ.get('GOOGLE_API_KEY')
+                gem_key = os.environ.get('GEMINI_API_KEY')
+                
+                # Mask keys for safety
+                g_masked = f"{g_key[:4]}...{g_key[-4:]}" if g_key and len(g_key) > 8 else ("Found" if g_key else "Missing")
+                gem_masked = f"{gem_key[:4]}...{gem_key[-4:]}" if gem_key and len(gem_key) > 8 else ("Found" if gem_key else "Missing")
+                
+                debug_info = f"\n\n[DEBUG ENGINE: AI=Offline, G_KEY={g_masked}, GEM_KEY={gem_masked}, CWD={os.getcwd()}]"
                 
                 return jsonify({
                     'success': True,
-                    'response': f"Search results for '{query}':\n\n{search_results}\n\n{debug_info}",
+                    'response': f"Search results for '{query}':\n\n{search_results}\n\n(Note: Using fallback search mode){debug_info}",
                     'confidence': 5,
                     'sources': ['DuckDuckGo (Fallback)'],
                     'timestamp': datetime.now().isoformat(),

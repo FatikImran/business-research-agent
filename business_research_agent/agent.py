@@ -51,17 +51,17 @@ from pydantic import BaseModel, Field
 # Load environment variables
 load_dotenv()
 
+# Search multiple .env locations
+load_dotenv() # Root
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env')) # /business_research_agent/.env
+load_dotenv(os.path.join(os.getcwd(), 'business_research_agent', '.env')) # Absolute from cwd
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# Search multiple .env locations
-load_dotenv() # Root
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env')) # /business_research_agent/.env
-load_dotenv(os.path.join(os.getcwd(), 'business_research_agent', '.env')) # Absolute from cwd
 
 
 class ClarityStatus(str, Enum):
@@ -159,6 +159,7 @@ def get_gemini_model():
     """
     if not GENAI_AVAILABLE:
         logger.warning("google-generativeai not installed")
+        print("DEBUG: google-generativeai not installed")
         return None
     
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -168,8 +169,10 @@ def get_gemini_model():
     # DEBUG: Log masked key information
     if api_key:
         logger.info(f"API Key found (length: {len(api_key)}, starts with: {api_key[:4]}...)")
+        print(f"DEBUG: API Key found (len={len(api_key)})")
     else:
         logger.warning("Neither GOOGLE_API_KEY nor GEMINI_API_KEY found in environment variables")
+        print("DEBUG: No API keys found in environment")
         return None
     
     try:
@@ -179,9 +182,11 @@ def get_gemini_model():
         # Test model availability with a lightweight request
         # model.get_model() # This verifies the model exists in the project
         logger.info("✓ Google Gemini API initialized successfully")
+        print("DEBUG: Model successfully created")
         return model
     except Exception as e:
         logger.error(f"CRITICAL: Failed to initialize Gemini API ({type(e).__name__}): {e}")
+        print(f"DEBUG: CRITICAL ERROR: {str(e)}")
         return None
         logger.error(f"Failed to initialize Gemini API: {e}")
         return None
