@@ -27,9 +27,17 @@ from enum import Enum
 
 from dotenv import load_dotenv
 
-from ddgs import DDGS
-
-DDGS_AVAILABLE = True
+try:
+    from ddgs import DDGS
+    DDGS_AVAILABLE = True
+except Exception as _ddgs_err:
+    DDGS_AVAILABLE = False
+    # Avoid failing import-time on platforms without ddgs installed (e.g., Vercel)
+    try:
+        # logger may not be configured yet; use print as a safe fallback
+        print(f"DuckDuckGo DDGS import failed: {_ddgs_err}")
+    except Exception:
+        pass
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END, START

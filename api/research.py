@@ -15,11 +15,26 @@ from flask import Flask, jsonify, request
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from business_research_agent.agent import (
-    BusinessResearchGraph,
-    AgentState,
-    search_duckduckgo,
-)
+try:
+    from business_research_agent.agent import (
+        BusinessResearchGraph,
+        AgentState,
+        search_duckduckgo,
+    )
+except Exception as _import_err:
+    print(f"Warning: failed to import business_research_agent.agent: {_import_err}")
+    BusinessResearchGraph = None
+
+    class AgentState:  # minimal fallback used only for request shaping when agent unavailable
+        def __init__(self, messages=None):
+            self.messages = messages or []
+            self.current_query = ""
+            self.conversation_context = ""
+            self.clarification_prompt = ""
+            self.search_source = ""
+
+    def search_duckduckgo(query: str, max_results: int = 5):
+        return f"DuckDuckGo search unavailable in this deployment (import error: {_import_err})"
 
 from langchain_core.messages import HumanMessage, AIMessage
 
